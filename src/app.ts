@@ -7,21 +7,28 @@ export const APP_NAME = "Moai (dev)"
 export type PullRequestContext = Context<WebhookPayloadPullRequest>
 export type CommitsResponse = Octokit.PullsListCommitsResponseItem[]
 
-const singleCommitBranch = (commitsResponse: CommitsResponse): boolean => {
+/**
+ * Returns true in the case that the branch contains a single commit, or all
+ * other commits to the branch are merge commits from the base branch.
+ */
+const singleCommitBranch = (
+  commitsResponse: CommitsResponse,
+  baseBranchName: string
+): boolean => {
   if (commitsResponse.length <= 1) return true
-  const masterMergeCommitPrefix = `Merge branch \'master\' into`
-  const mergeCommitsFromMaster = commitsResponse
-    .map(({ commit }) => commit.message.startsWith(masterMergeCommitPrefix))
-    .filter(a => a === true)
-  return mergeCommitsFromMaster.length === commitsResponse.length - 1
+  const mergeCommitPrefix = `Merge branch \'${baseBranchName}\' into`
+  const mergeCommits = commitsResponse.filter(({ commit }) =>
+    commit.message.startsWith(mergeCommitPrefix)
+  )
+  return mergeCommits.length === commitsResponse.length - 1
 }
 
 const analysePR = async (context: PullRequestContext): Promise<PR> => {
   const { data } = await context.github.pulls.listCommits(
     context.repo({ pull_number: context.payload.pull_request.number })
   )
-  const { title } = context.payload.pull_request
-  return singleCommitBranch(data)
+  const { title, base } = context.payload.pull_request
+  return singleCommitBranch(data, base.label)
     ? { title, singleCommit: true, commitMessage: data[0].commit.message }
     : { title, singleCommit: false }
 }
